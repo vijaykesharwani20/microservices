@@ -1,0 +1,403 @@
+https://github.com/in28minutes/spring-microservices/
+Top 4 Troubleshooting Tips
+	https://github.com/in28minutes/in28minutes-initiatives/blob/master/The-in28Minutes-TroubleshootingGuide-And-FAQ/quick-start.md
+Spring Doc
+	https://github.com/in28minutes/in28minutes-initiatives/tree/master/The-in28Minutes-TroubleshootingGuide-And-FAQ#q---what-is-the-need-for-a-component-scan
+
+Service Definition -decider for request/response format and point WSDL in SOAP
+	Request/Response format
+	Request Structure
+	Response Structure xml/json, in soap xml only and it needs lots of parsing
+	Endpoint
+Transport
+	HTTP/MQ
+REST
+	Uniform Resource Identifier
+	Different representation
+	use Only HTTP
+	No standard Service Definition defined in REST like wadl, swagger
+	415-unsupported media type, 400 bad request, 405 method not allowed like post/get , 404 NOT_FOUND, 401 unauthorized
+	500-internalServer error like any exception
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Spring Initializr http://start.spring.io/ is great tool to bootstrap your Spring use version 2.1.3
+Boot projects.
+@SpringBootApplication
+	HttpMessageConvertersAutoConfiguration+JackSonAutoConfiguration is responsible for converting o/p to Json
+@RestController --> COntroller+ResponseBody(match to response converter which is jackson here)
+@GetMapping() = @RequestMapping(method=RequestMethod.GET) 
+	While getting some id which is not found it by default return 200 status which is bad, so to resolve it
+	1) Can return runtimeException if user not found which will return 500 error code. so add @ResponseStatus(HttpStatus.NOT_FOUND
+	2) Having Customized exception structure we need to extend ResponseEntityExceptionHandler like below and create method to return ResponseEntity  
+		object for every specific exception using @ExceptionHandler .
+		@ExceptionHandler(Exception.class)
+			public final ResponseEntity<Object> handleAllException(Exception ex, WebRequest request) {
+			ExceptionResponse exceptionResponse = new ExceptionResponse(new Date(), ex.getMessage(), request.getDescription(false));
+			return new ResponseEntity<Object>(exceptionResponse, HttpStatus.INTERNAL_SERVER_ERROR);
+		}
+	   Put @ControllerAdvice provide centralized exception handling across all * {@code @RequestMapping} methods through {@code @ExceptionHandler} methods.
+	Before --
+		{
+			"timestamp": "2020-05-24T13:02:17.845+00:00",
+			"status": 404,
+			"error": "Not Found",
+			"trace": "com.vijay.rest.webservices.restwebservices.exception.UserNotFoundException: id-10\r\n\tat .
+			"message": "id-10",
+			"path": "/users/10"
+		}
+	After
+		{
+			"timestamp": "2020-05-24T13:20:35.280+00:00",
+			"message": "id-10",
+			"details": "uri=/users/10"
+		}
+@Postmapping("/users")   //normally it returns 200 status.
+	@RequestBody  User user
+	To change status 201 and change URI also. use below thing
+	1) @ResponseStatus(HttpStatus.CREATED)  It will add status to 201
+	2) URI location = ServletUriComponentsBuilder.fromCurrentRequest().path("/{id}").buildAndExpand(savedUser.getId()).toUri();
+		ResponseEntity.created(location).build();    //These 2 lines will add statsus 201 and location-uri in header template 
+@DeleteMapping
+@PathVariable(String name)  to get value from url.
+ 
+Application.properties -auto detected by spring boot, So need of PropertySource
+	logging.level.org.springframwork.web = INFO/DEBUG  || logging.level.com.vijay.example = INFO || logging.file=logput.log
+	spring.mvc.view.prefix:/WEB-INF/view/
+	spring.mvc.view.suffix:.jsp
+	need to place src/main/resource. 
+	server.port=9090
+	How to use property value inside code. 2 ways
+		1)If wanted to club property file with other files like.yaml then use @ConfigurationProperties('name') --> use as name.size=1     [IMP]
+		  Create configpropeprty class with fields and with annotation like @Compoanent and @ConfigurationProperties, then autowire in controller class and use.
+		2)@Value("${propertykey}") above instance variable
+	For application .yml  --> just remove the properties file .
+		In yml we can define properties for diff env in one file.
+	We can simply define the application-<env-name>.properties and reference it while running the application.Env specific will take precedence over default property file.
+		Just put this property(spring.profiles.active=qa) in application.properties for application-qa.properties
+	spring.security.user.name=user
+	spring.security.user.password=test
+Model classess must have default constructor which is used while mapping request body to obj class by jackson but in newer version it does'nt need.
+	Also getter/setter required too.
+Embedded Server
+	Normally our war file does not run on production due to security feature or other reasons, but if we deploy springboot unit which has embedded server then it can
+		run independently. So create the jar which is self running by just running. It is quickly testable
+@EntityScan(basepackages=com.vijjk.entity) inside main spring boot class	
+	Create @Entity class for generating schemas
+	add database properties in properties file
+@Repository 
+	to create repository interface for specific entity by extending	JpaRepository
+	@EnableJpaRepositories(basepackages=com.vijay.repository) at main class file  to let springboot know of repository.
+Actuator
+	It brings production ready features to our application without having to actually implementing 
+	It shows the dev ops information about the running application health , metrics, info, logs, env, jvm
+	It uses HTTP endPoints or JMX beans to enable us to interact with it.
+	management.endpoint.shutdown.enabled=true //add in property file for enabling this property which is not active by default
+	management.endpoints.web.exposure.include=* // to show all endpoint like localhost:8080/actuator/
+		but also create SecurityConfig class by extending WebSecurityConfigureAdaptor and using @Configuration
+		https://www.udemy.com/course/spring-boot-complete-guide-from-development-to-deployment/learn/lecture/10994526#overview
+	It has predefined endpoints --> http://localhost:8080/actuator
+Swagger2 --add 2 dependenci
+	Create config file using @Configuration and @EnableSwagger2
+	to check --> localhost:8080/v2/api-docs   and UI --localhost:8080/swagger-ui.html
+	add below code to resolve issue withe hateoas
+	@Bean
+	public LinkDiscoverers discoverers() {
+	    List<LinkDiscoverer> plugins = new ArrayList<>();
+	    plugins.add(new CollectionJsonLinkDiscoverer());
+	    return new LinkDiscoverers(SimplePluginRegistry.create(plugins));
+	}
+	@Bean
+	public Docket api() {
+		return new Docket(DocumentationType.SWAGGER_2)
+				.apiInfo(DEFAULT_API_INFO);
+	}
+	For changinf model definitions  use below @ApiModel(description="") for class and @ApiModelProperty(notes="BirthDate must be past Date")
+Filtering-- to send specific type of detail to end user
+	just include in model class @JsonIgnore fromfasterxml
+	@JsonIgnoreProperties(value={"feild1"}  use at class level to exclude any field   //static filtering
+	//Dynamic filtering	
+	SimpleBeanPropertyFilter sbpf = SimpleBeanPropertyFilter.filterOutAllExcept("field1","field2");
+	FilterProvider fp = new SimpleFilterProvider.addFilter("filtername",)
+	MappingJacksonValue mapp = new MappingJacksonValue(model reference);
+	mapp.setFilters(fp);
+	add @JsonFilter("filtername") at model class
+Versioning  -both cases we have to create 2 userclass
+	1)/v1/user and /v2/user  
+	2)/user/param?version=1  and /user/param?version=2
+		@GetMapping(value="/user/param", param="version=1") and @GetMapping(value="/user/param", param="version=2")
+	3)/user/header and put in header the parameter
+		@GetMapping(value="/user/header", headers="X-API-VERSION=1") and @GetMapping(value="/user/header", headers="X-API-VERSION=2")
+	4)/user/produces and accept application/vnd.company.app-v1+json
+		@GetMapping(value="/user/produces", produces="pplication/vnd.company.app-v1+json") 
+Security	-spring-boot-starter-security
+	spring.security.user.name=user
+	spring.security.user.password=test
+H2 Database
+	H2 database name is randomly generated each time you restart the server, Make the database URL a constant by configuring this in
+	spring.datasource.url=jdbc:h2:mem:testdb
+	spring.datasource.driverClassName=org.h2.Driver
+	spring.datasource.username=sa
+	spring.datasource.password=password
+	spring.jpa.database-platform=org.hibernate.dialect.H2Dialect
+	spring.h2.console.enabled=true    // http://localhost:8080/h2-console 
+JPA 
+	By Default after finding entity class spring noot creates schema inside the DB
+		Sometimes, we don't want to rely on the default schema creation mechanism. In such cases, we can create a custom schema.sql file:
+		same way we want to populate the data then put the data.sql at classpath. it will pick the data and insert into the DB.
+	make class entity
+	add propert regarding h2 or other dB-->spring.h2.console.enabled=true, spring.jpa.show-sql=true
+	If we have already created schema in DB then use @EntityScan to map existing and java entity obj otherwise if we are creating first time then no need.
+	create Jpareposity extended interface with @reposiotry
+	create service class with @Service
+	put @EnableJpaRepositories and @EntityScan at main class
+	out default constructor at entity class for initialization
+----------------------------------------------------------------------------------------Testing----------------------------------------------------------------
+https://www.springboottutorial.com/unit-testing-for-spring-boot-rest-services
+https://www.youtube.com/watch?v=RbZvXCAtMus
+
+A web layer test using the @WebMvcTest annotation starts a Spring Application Context
+	WebMvcTest(value = StudentController.class, secure = false): 
+		WebMvcTest annotation is used for unit testing Spring MVC application. This can be used when a test focuses only Spring MVC components. In this test, we want to launch only StudentController. All other controllers and mappings will not be launched when this unit test is executed.
+		it does include some auto configurations such as Spring security, @AutoConfigureWebMvc, @AutoConfigureMockMvc, @Controller, @ControllerAdvice among other functionalities.
+Integration Tests
+	@SpringBootTest annotation enables a testing application context, allowing us to execute methods annotated with @Test. By default, SpringBootTest will not start the server. But if we define the 'webEnvironment' property as @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT OR WebEnvironment.DEFINED_PORT), spring will load a WebServerApplicationContext providing a real web environment. This property will start the embedded server listening on the defined or random port. The context uses the SpringBootContextLoader class and the @SpringBootConfiguration annotation by default.
+	To mimic the HTTP requests?-->we’ll use both Spring’s TestRestTemplate and the REST-Assured framework
+		The main difference -aside from syntax- is that TestRestTemplate is part of Spring’s test framework which comes bundled with the ‘spring-boot-starter-test’ dependency. When using @SpringBootTest, TestRestTemplate’s bean is registered in the application context by default.
+REST Assured 
+	is a Java library that allows you to use a domain-specific language (DSL) for writing powerful, easy to maintain tests for RESTful APIs. In this tutorial I'll show you how to set up and configure REST Assured with a Spring Boot Application.
+	@RunWith(SpringRunner.class) : 
+		SpringRunner is short hand for SpringJUnit4ClassRunner which extends BlockJUnit4ClassRunner providing the functionality to launch a Spring TestContext Framework.
+	RunWith annotation because it’s from JUnit 4 and the import of Test annotation. 
+		@ExtendWith(SpringExtension.class)   for Junit 5
+	@SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT, classes = RestWebServicesApplication.class)
+		when we need to bootstrap the entire container. The annotation works by creating the ApplicationContext that will be utilized in our tests.
+	@TestInstance(Lifecycle.PER_CLASS)  //BeforeAll method 'public void com.stc.phoenix.RestWebServicesApplicationTests.setUp()' must be static unless this annotated used
+	@LocalServerPort is just a shortcut for @Value("${local.server.port}")
+	@TestPropertySource(locations = "classpath:application-integrationtest.properties")  
+		spring.datasource.url = jdbc:h2:mem:test
+		spring.jpa.properties.hibernate.dialect = org.hibernate.dialect.H2Dialect
+	@BeforeEach and @BeforeAll are the JUnit 5 equivalents of @Before and @BeforeClass.
+	We can use header method of given instead of accept which works same
+	Hamcrest library --automatically comes with restassured, which is used for validation of response.
+		org.hamcrest.Matchers
+	then() returns ValidatableResponse we can use and() for multiple aseertThat() .
+	2020-06-05T14:32:12.000+00:00
+		
+------------------------------------------------------------------------------- Dependencies ------------------------------------------------------------------------------------
+spring-boot-devtools 
+	module includes an embedded LiveReload server that is used to trigger a browser refresh when a resource is changed. For this to happen in the browser we need to install the LiveReload plugin one such implementation is Remote Live Reload for Chrome
+Swagger need version too	add <version>2.9.2</version> for working swagger+hateoas
+	https://stackoverflow.com/questions/58431876/spring-boot-2-2-0-spring-hateoas-startup-issue
+	<dependency>
+			<groupId>io.springfox</groupId>
+			<artifactId>springfox-swagger2</artifactId>
+			<version>2.7.0</version>
+		</dependency>
+		<dependency>
+			<groupId>io.springfox</groupId>
+			<artifactId>springfox-swagger-ui</artifactId>
+			<version>2.7.0</version>
+	<!--No need of below -->
+	<!-- <dependency>
+			<groupId>org.springframework.plugin</groupId>
+			<artifactId>spring-plugin-core</artifactId>
+			<version>1.2.0.RELEASE</version>
+		</dependency> -->
+Testing----------------------------------------------------------------	
+	rest-assured, json-schema-validator, spring-boot-starter-test, junit
+	
+================================================================================ Microservices ==================================================================================
+https://github.com/in28minutes/getting-started-in-5-steps   include all projects of 28 minutes
+
+https://github.com/in28minutes/spring-microservices/tree/master/03.microservices
+https://github.com/in28minutes/in28minutes-initiatives/tree/master/The-in28Minutes-TroubleshootingGuide-And-FAQ#debugging-problems-with-spring-cloud-config-server
+https://github.com/in28minutes/getting-started-in-5-steps/tree/master/zzz-microservices
+
+Spring Cloud - Spring Cloud provides tools for developers to quickly build some of the common patterns in distributed systems 
+	(e.g. configuration management, service discovery, circuit breakers, intelligent routing, micro-proxy, control bus, one-time tokens, global locks, 
+	leadership election, distributed sessions, cluster state).
+3 things required --> Rest, small deployable units, cloud (manage instances of services)
+Fault Tolerance - to resolve dependency of microservices on each other in case of failure.
+Challenges-
+	Configuration management - To config all service spring cloud can store in cloud at one place as SpringCloudConfigServer
+	Load balancing - Dynamic Scale up and down
+		Naming server(Register all instance of services here) communicate between service and its instances. 
+		Ribbon - Load is evenly distributed between instances
+	Visibility and Monitoring
+		Zipkin distributed tracing -- for visibility
+		Netflix Api gateway --  provide common features required by most of the services like security, logging.
+	Fault Tolerance  -- Hystrics
+	Feign -- Using Resttemplate we can call other services but using feign it is more easy.
+Advantages - Adaption of new technology and process, Dynamic scaling, faster Release cycle
+
+--------------------------------------------Architecture------------------------------------------------------------
+currencyConverter Service-->currencyExchange Service(-->DB)-->LimitsService-->Configuration
+--------------------------------------------------------------------------------------------------------------------
+Reading values from application.properties
+	1. @Value
+	2. @ConfigurationProperties("name") / this name is used for writing properties in application properties file. Also use @Component
+Setting up SpringCloudConfigServer  -- It stores configuration for multiple services also for different environmrnt services of each service like QA,prod
+	Create normal springBoot application with devtools and config server dependency only.
+	put
+		spring.application.name=spring-cloud-config-server
+		server.port=8888
+		spring.cloud.config.server.git.uri=file:\\D:/JavaCertification/UdemyMicroservices/git-localconfig-repo // add for configuring repo which could be local or in github.
+	inside the repository create limitservice application named properties file for example limits-service.properties
+	Add @EnableConfigServer in main SpringCloudConfigServer file.
+	run url --> http://localhost:8888/limits-service/default // for default propertykey
+				http://localhost:8888/limits-service/dev	// for dev environment also create limits-service-dev.properties-->This will show both environment properties in order
+	Why should we use Spring Cloud Config Server?
+		Lets say you have 100 micro services. Let’s say the configuration for them is stored in 100 different repositories.
+		Who would maintain this configuration for stage and production environments? The operations team (with support from dev team)
+		Compare this with having just one git repository for all the configuration! As soon as you commit the change to git, the change will be picked up by the application.  [IMP]
+	We have to restart any services to pick up latest config from the config server, If there are many instances of the limit service that would be a problem
+	
+Connect limit service to SpringCloudConfigServer
+	Rename application.properties of limits-service to bootstrap.properties / i guess for not picking while starting the server
+		bootstrap.properties helps your application locate the application configuration on the config server.
+		application.properties contains your default application configuration.
+	put the spring.cloud.config.uri=http://localhost:8888
+	and run http://localhost:8080/limits   but before that server must be running
+	
+	How do Spring Cloud Config Server and the Limits Service Application Talk to Each Other?
+		At startup, your application tells the Spring Config Server, what its application name is. Spring Config Server returns configuration based on it.
+		limits-service will go to bootstrap file--> uri-->make full uri/appName/default/ --> return properties--> controller of limits-service
+
+Currency exchange Service --> http://localhost:8000/currency-exchange/from/USD/to/INR
+	Use springframework.core.env.Environment;   to get port number
+	To run on multiple port create multiple instance in run configuration. and set port as -Dserver.port=8001
+	Configure dataJapa by adding boot starter data jpa and h2database and create entity and data.sql
+	After creating the Jpa repository we need to create default constructor in entity class
+	
+Talk to service with each other	using two ways--Feign Vs resttemplate
+	1- Using restTemplate().getForEntity() --> http://localhost:8100/currency-converter/from/USD/to/INR/quantity/1100
+	2- 	Add dependency cloud feign   -->http://localhost:8100/currency-converter-feign/from/USD/to/INR/quantity/1100
+		@EnableFeignClients("com.in28minutes.microservices.currencyconversionservice") in main ConversionServiceApplication class
+		Use Feign, create interface exchangeProxy  @FeignClient(name = "name of the service",url="localhost:8000") and the do @GetMapping("/currency-exchange/from/{from}/to/{to}")
+		Use this feign in controller class.
+	One instance of currency conversion service can talk to only one instance of currency exchange service but how we can do it opposite of this is ribbon
+Ribbon
+	Distribute load between exchange service when conversion service talk to exchange service's instances.
+	add @RibbonClient in exchangeProxy. also add the dependency in pom .
+	add property in conversion service property file and remove urls from @FeignClient()
+		currency-exchange-service.ribbon.listOfServers=http://localhost:8000,http://localhost:8001  // It needs when we not using naming server
+	--> http://localhost:8100/currency-converter-feign/from/AUD/to/INR/quantity/1100   //output port will be change from 8000 to 8001  and viceversa
+	
+Naming Server- register and search serive here
+	Dynamic scaling is not possible also we have to configure application.properties of conversion service everytime we want to add any service instance in exchange service.
+	That's where naming server came to register every service. if want to connect with any service then ask naming server only.
+	1. Add dependecy --> eureka server, dev tools, actuator, config client(for connecting with config server
+	2. Add @EnableEurekaServer in main class
+	3. Add property like app name, port and also 2 extra like below.
+		eureka.client.register-with-eureka=false
+		eureka.client.fetch-registry=false
+	4. localhost:8761  --> default ui for eureka will be shown.
+	Note- Eureka Naming Server, APIÂ Gateways etc become single point of failures.It becomes essential to build enough redundancy - create multiple instances - 
+		so that they are available 100% of time. There is a feature available with Eureka - Peer mode configuration.
+		Here you can configure multiple/more than one eureka naming server in peer mode and they are aware of each other.
+	
+Connect conversion service and exchange service with eureka	
+	1. Add dependency spring-cloud-starter-netflix-eureka-client
+	2. Add @EnableDiscoveryClient and in applicationProperties add naming server url like eureka.client.service-url.default-zone = http://localhost:8761/eureka   [IMP]
+	3. Check in localhost:8761 the registerd instance with eureka also can check in logs.
+	
+Connecting conversion service with exchange service using naming server	
+	Just disable the property in conversion service of ribbon which includes exchange services urls. as we have configured naming server in conversionService property
+	which will automatically detects the up service of exchange service.
+	Running order is --> naming server--> exchange service--> conversion service--> wait for a minute before using conversion service as naming server takes time.
+	There will be no problem if any instance of exchange service is stopped or started.
+
+API Gateways --netflix--Zuul
+	In real worls there can be 100 microservices can be talking with each other, so each talking must be authentic , secure, and each request is rated as per hour rate.
+	How do we make sure we intercept requests and messages exchanged between each pair of microservices? That's where the API Gateway comes into the picture.
+	Also all services should be fault tolerance.
+	Service Aggregation-- e.g. exteral service consumer wants to call 15 services, so we will aggregate them and external will call them in one call.
+	1. Create Componant by adding dependency-->eureka discovery(whenever zuul is up, then discovered by eureka), zuul, actuator, dev tools.
+	2. @EnableZuulProxy , @EnableDiscoveryClient
+	3. Create zuul filter by extending ZuulFilter and add @Component and can write inside method shouldFilter which returns boolean. Other methods are like
+		filterType--> tells when u want to execute before or after or only errors which returns string--> "pre", post, error.
+		Oject run() --> real logic stands here.
+	[IMP]--> for calling services through Zuul url will be like--> localhost:8765/{applicationName}/{uri}
+		http://localhost:8765/currency-exchange-service/currency-exchange/from/USD/to/INR   --> it goes to main request with 8000port
+		http://localhost:8765/currency-conversion-service/currency-converter-feign/from/AUD/to/INR/quantity/1100  
+		Above call is like 
+			[zuul]->[Naming-server]->[conversion-service]->[feign]->[exchangeService]. Earlier we were directly hitting [conversion-service]->[feign]->[exchange-service]-> result
+		But if we want to call earlier flow but zuul should also be called then
+		1. change to @FeignClient(name = "zuul-api-gateway")
+		2. Change @GetMapping to @GetMapping("/currency-exchange-service/currency-exchange/from/{from}/to/{to}")
+			-->[conversion-service]->[feign]-->[zuul]->[Naming-server]-->[exchangeService].
+			http://localhost:8100/currency-converter-feign/from/AUD/to/INR/quantity/1100 
+			here Zuul request will be
+				requestUri-->/currency-conversion-service/currency-converter-feign/from/AUD/to/INR/quantity/1100
+			
+		If we want to execute Zuul in starting and in between like below then url will be. Benefit will ne we can restrict/filter/authenticate 2 times
+		[zuul]->[Eureka-Naming-server]-->[conversion-service]->[feign]-->[zuul]->[Naming-server]-->[exchangeService].
+		http://localhost:8765/currency-conversion-service/currency-converter-feign/from/AUD/to/INR/quantity/1100 
+			here requestUri at zuul will be
+				requestUri-->/currency-conversion-service/currency-converter-feign/from/AUD/to/INR/quantity/1100
+				requestUri-->/currency-exchange-service/currency-exchange/from/AUD/to/INR
+				
+Spring Cloud Sleuth --> Assign Id to each request for identification.
+	Add dependency in zull , conversion, exchange service.
+	Add Sampler - To trave all request, Add or create @Bean of Sampler,What All request i want to intercept 
+	o/p--> common id is assigned to each request whichever has used sleuth
+		currency-exchange-service,4f65311e789a7277,42521ca819a9b6fb,true
+		netflix-zuul-api-gateway-server,4f65311e789a7277,51f79336efcf8d4d,true
+		currency-conversion-service,4f65311e789a7277,4f65311e789a7277,true		
+Zipkin -Distributed tracing System.
+	We see th output for each services comes in different o/p console which is hectic, that's why distributed traving system comes.
+	[services]->[RabbitMQ]->[Zipkin]-->[DataBase for log storage]
+	RabbitMQ --> All the logs from services will be put in MQ, which will be sent it out to Zipkin for consolidation
+	Install erlang-->rabbitMQ   help-->https://cmatskas.com/getting-started-with-rabbitmq-on-windows/
+		(ERLANG_HOME) has been created during the installation
+			C:\Program Files\RabbitMQ Server\rabbitmq_server-3.8.5\sbin
+			rabbitmq-plugins.bat enable rabbitmq_management    //Run the following command to enable the plugin
+		Then, re-install the RabbitMQ service using the commands below: these creates services in windows
+			rabbitmq-service.bat stop 
+			rabbitmq-service.bat install 
+			rabbitmq-service.bat start 
+		http://localhost:15672/mgmt   guest/guest/g  
+	Download Zipkin from google bcz zipkin depdndecy is not present after springboot2.0.0. after download run
+		SET RABBIT_URI=amqp://localhost
+		java -jar zipkin.jar	   --> can check --> http://localhost:9411
+Connection to Zipkin	
+	add dependency spring-cloud-starter-zipkin and spring-rabbit in gateway, conversion and exchange service
+Spring cloud Bus
+	when we update property in config server we commit that difference and restart the services else it does not take latest changes.
+		but without restarting the services we can do by doing post request like
+			1. first enable actuator in properties file
+			2. http://localhost:8080/actuator/refresh
+	If there are 100 service instance are running then we can not do refresh for 100 so here comes the cloud bus. which is provided by  kafka or rabbitMQ
+		Add dependency spring-cloud-starter-bus-amqp in config server and limit service.
+		first enable actuator in properties file
+		then refresh request --> http://localhost:8080/actuator/bus-refresh   // refresh all the instance of service
+		
+Falut Tolerance
+	Add depdendency spring-cloud-starter-netflix-hystrix in limit service
+	Add @EnableHystrix in limit service main file
+	Create fallbackback method and create mapping for fallback occurance
+		@GetMapping("/fault-tolerance-example")
+		@HystrixCommand(fallbackMethod="fallbackRetrieveConfiguration")
+		public LimitConfiguration retrieveConfiguration(){
+			thrwo new RuntimeException("Not Available");
+		}
+		
+		public LimitConfiguration fallbackRetrieveConfiguration(){
+			return new LimitConfiguration(9,999);
+		}
+	and run http://localhost:8080/fault-tolerance-example
+------------------------------------------------------------------------------ TrobleShoot ---------------------------------------------------------------------
+(1) Does the URL http://localhost:8888/limits-service/default work? If the URL does not work, check if you have the same name for limits-service in (a) spring.application.name in bootstrap.properties (b) in the URL (c) in the name of the property file
+	
+2. https://github.com/in28minutes/in28minutes-initiatives/tree/master/The-in28Minutes-TroubleshootingGuide-And-FAQ#debugging-problems-with-feign-and-ribbon
+		Give some time to work for ribbon
+3. https://github.com/in28minutes/in28minutes-initiatives/tree/master/The-in28Minutes-TroubleshootingGuide-And-FAQ#debugging-problems-with-naming-server-eureka-and-ribbon
+	
+4. How can we implement Authentication with Zuul? https://github.com/shuaicj/zuul-auth-example
+
+
+Git checkin
+git init
+cd pheonix
+git add .
+ git commit -m "adding Pheonix rest webservice with spring boot example"
+git push --force --set-upstream https://github.com/vijaykesharwani20/UdemyMicroservices.git master
